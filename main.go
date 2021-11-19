@@ -1,91 +1,150 @@
 package main
 
 import (
+	"C"
+	"diffEquationSolving/helpers"
 	"fmt"
-	"github.com/cpmech/gosl/la"
-	"github.com/james-bowman/sparse"
-	"github.com/james-bowman/sparse/blas"
 	"gonum.org/v1/gonum/mat"
 	"math"
 )
-
-type CSRProxy struct {
-	sparse.CSR
-}
-
-func (c *CSRProxy) MulVecTo(dst *mat.VecDense, trans bool, x mat.Vector) {
-	ar, ac := c.Dims()
-	if trans {
-		ar, ac = ac, ar
-	}
-	if ac != x.Len() || ar != dst.Len() {
-		panic(mat.ErrShape)
-	}
-	blas.Dusmv(trans, 1, c.RawMatrix(), x.(*mat.VecDense).RawVector().Data, 1, dst.RawVector().Data, 1)
-}
-
-func matPrint(X mat.Matrix) {
-	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
-	fmt.Printf("%v\n", fa)
-}
 
 func boundary(x float64, z float64) float64 {
 	return 300
 }
 
-func function(x float64, z float64) float64 {
-	return 1000 * math.Exp(-math.Pow(x-0, 2)*math.Pow(z-0, 2))
+func mainFunc(x float64, z float64) float64 {
+	return 1000 * math.Exp(-math.Pow(x-2, 2)*math.Pow(z-2, 2))
 }
 
-func coefficient(x float64, z float64) float64 {
+func kFunc(x float64, z float64) float64 {
 	return 0.536
 }
 
-func getPIndex(i int, j int, nX int) int {
-	return j*(nX+1) + i
+func solveLine(prevULine []float64, funcLine []float64, kVal float64, startVal float64, endVal float64, hStep float64, tStep float64) []float64 {
+	n := len(prevULine)
+	topDiag := make([]float64, n)
+	midDiag := make([]float64, n)
+	botDiag := make([]float64, n)
+	bVector := make([]float64, n)
+	theta := tStep / (hStep * hStep)
+	midDiag[0] = 1
+	midDiag[len(midDiag)-1] = 1
+	bVector[0] = startVal
+	bVector[len(bVector)-1] = endVal
+	for idx := 1; idx < n-1; idx++ {
+		topDiag[idx] = -theta
+		midDiag[idx] = 2*theta + 1
+		botDiag[idx] = -theta
+		bVector[idx] = theta * (prevULine[idx-1] - 2*prevULine[idx] + prevULine[idx+1])
+		bVector[idx] += prevULine[idx] - tStep*funcLine[idx]/kVal
+	}
+	res := helpers.ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
+	return res
 }
 
-func solve(xBound float64, zBound float64, hStep float64) {
-	nX := int(math.Round(xBound / hStep))
-	nZ := int(math.Round(zBound / hStep))
-	n := (nX + 1) * (nZ + 1)
-	bMatrix := la.NewVector(n)
-	eqMatrixTriplet := la.NewTriplet(n, n, 0)
-	for i := 0; i < nX+1; i++ {
-		for j := 0; j < nZ+1; j++ {
-			pIndex := getPIndex(i, j, nX)
-			if i == 0 || j == 0 || i == nX || j == nZ {
-				eqMatrixTriplet.Put(pIndex, pIndex, 1)
-				bMatrix[pIndex] = boundary(hStep*float64(i), hStep*float64(j))
-			} else {
-				coefA := coefficient((float64(i)-0.5)*hStep, float64(j)*hStep)
-				coefB := coefficient((float64(i)+0.5)*hStep, float64(j)*hStep)
-				coefC := coefficient(float64(i)*hStep, (float64(j)-0.5)*hStep)
-				coefD := coefficient(float64(i)*hStep, (float64(j)+0.5)*hStep)
-				coefF := -coefA - coefB - coefC - coefD
+func solve(xBound float64, zBound float64, hStep float64, tStep float64, iterations int) [][]float64 {
+	nX := int(xBound / hStep)
+	nZ := int(zBound / hStep)
 
-				eqMatrixTriplet.Put(pIndex, getPIndex(i-1, j, nX), coefA)
+	prevU := make([][]float64, nX+1)
+	for idx, _ := range prevU {
+		prevU[idx] = make([]float64, nZ+1)
+	}
+	currentU := make([][]float64, nX+1)
+	for idx, _ := range currentU {
+		currentU[idx] = make([]float64, nZ+1)
+	}
+	for iteration := 0; iteration < iterations; iteration++ {
+		for i := 0; i < nZ; i++ { //set boundaries
+			currentU[i][0] = -boundary(0, 0)
+			currentU[i][len(currentU[i])-1] = -boundary(0, 0)
+		}
+		for j := 0; j < nX; j++ { //set boundaries
+			currentU[0][j] = -boundary(0, 0)
+			currentU[len(currentU)-1][j] = -boundary(0, 0)
+		}
 
-				eqMatrixTriplet.Put(pIndex, getPIndex(i+1, j, nX), coefB)
+		for j := 1; j < nX; j++ { // by cols
+			prevUCol := make([]float64, nX+1)
+			for i, v := range prevU {
+				prevUCol[i] = v[j]
+			}
+			funcValCol := make([]float64, nZ)
+			helpers.FillSlice(0, nZ, hStep, funcValCol, func(z float64) float64 {
+				return mainFunc(float64(j)*hStep, z)
+			})
+			kVal := kFunc(0, 0)
+			startVal := -boundary(0, 0)
+			endVal := -boundary(0, 0)
+			solvedLine := solveLine(prevUCol, funcValCol, kVal, startVal, endVal, hStep, tStep)
+			for idx, val := range solvedLine {
+				currentU[idx][j] = val
+			}
+		}
 
-				eqMatrixTriplet.Put(pIndex, getPIndex(i, j-1, nX), coefC)
+		for i, _ := range currentU { // copy currentU to prevU
+			for j, _ := range currentU[i] {
+				prevU[i][j] = currentU[i][j]
+			}
+		}
 
-				eqMatrixTriplet.Put(pIndex, getPIndex(i, j+1, nX), coefD)
+		for i := 1; i < nZ; i++ { // by rows
+			prevURow := make([]float64, nX+1)
+			for j, v := range prevU[i] {
+				prevURow[j] = v
+			}
+			funcValRow := make([]float64, nX+1)
+			helpers.FillSlice(0, nX+1, hStep, funcValRow, func(x float64) float64 {
+				return mainFunc(x, float64(i)*hStep)
+			})
+			kVal := kFunc(0, 0)
+			startVal := -boundary(0, 0)
+			endVal := -boundary(0, 0)
+			solvedLine := solveLine(prevURow, funcValRow, kVal, startVal, endVal, hStep, tStep)
+			for idx, val := range solvedLine {
+				currentU[i][idx] = val
+			}
+		}
 
-				eqMatrixTriplet.Put(pIndex, pIndex, coefF)
+		var maxErr float64 // calc max error
+		for i, _ := range currentU {
+			for j, _ := range currentU[i] {
+				err := math.Abs(prevU[i][j] - currentU[i][j])
+				if err > maxErr {
+					maxErr = err
+				}
+			}
+		}
 
-				bMatrix[pIndex] = -function(hStep*float64(i), hStep*float64(j)) * hStep * hStep
+		fmt.Println(maxErr)
+
+		for i, _ := range currentU { // copy currentU to prevU
+			for j, _ := range currentU[i] {
+				prevU[i][j] = currentU[i][j]
 			}
 		}
 	}
-	sparseSolver := la.NewSparseSolver("Umfpack")
-	defer sparseSolver.Free()
-	sparseSolver.Init(eqMatrixTriplet, nil)
-	x := la.NewVector(len(bMatrix))
-	sparseSolver.Solve(x, bMatrix)
-	matPrint(mat.NewDense(nX, nZ, x))
+	return currentU
+}
+
+//export solver
+func solver() *C.char {
+	hStep := 0.5
+	res := solve(10, 10, hStep, 0.01, 1000)
+	n := len(res)
+	m := len(res[0])
+	resMat := mat.NewDense(n, m, nil)
+	for i := 0; i < n; i++ {
+		for j := 0; j < m; j++ {
+			resMat.Set(i, j, -res[i][j])
+		}
+	}
+
+	fa := mat.Formatted(resMat, mat.FormatPython())
+	//helpers.Test()
+	return C.CString(fmt.Sprintf("%#v\n", fa))
 }
 
 func main() {
-	solve(1, 1, 0.25)
+	solver()
 }

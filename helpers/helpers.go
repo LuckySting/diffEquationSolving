@@ -26,7 +26,7 @@ func ThomasAlgorithm(botDiag []float64, midDiag []float64, topDiag []float64, bV
 	uVector[n-1] = (botDiag[n-1]*uVector[n-1] - bVector[n-1]) / (-midDiag[n-1] - botDiag[n-1]*vVector[n-1])
 	xVector := make([]float64, n)
 	xVector[n-1] = uVector[n-1]
-	for i := n - 2; i > 0; i-- {
+	for i := n - 2; i > -1; i-- {
 		xVector[i] = vVector[i]*xVector[i+1] + uVector[i]
 	}
 	return xVector
@@ -56,7 +56,6 @@ func Test() {
 
 	x := mat.NewVecDense(5, nil)
 	x.SolveVec(A, mat.NewVecDense(5, bVector))
-
 	fx := mat.Formatted(x, mat.FormatPython())
 	fmt.Printf("Original = %v\n", fx)
 	x2 := ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
