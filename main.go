@@ -154,11 +154,19 @@ func solveLine(prevULine []float64, funcLine []float64, kVal float64, startVal f
 	bVector[0] = startVal
 	bVector[len(bVector)-1] = endVal
 	for idx := 1; idx < n-1; idx++ {
-		topDiag[idx] = -theta
-		midDiag[idx] = 2*theta + 1
-		botDiag[idx] = -theta
-		bVector[idx] = theta * (prevULine[idx-1] - 2*prevULine[idx] + prevULine[idx+1])
-		bVector[idx] += prevULine[idx] - tStep*funcLine[idx]/kVal
+		coefA := kVal
+		coefB := kVal
+		coefC := kVal
+		coefD := kVal
+		coef := kVal
+		topDiag[idx] = -coefB
+		midDiag[idx] = (coefA + coefB) + coef/theta
+		botDiag[idx] = -coefA
+		bVector[idx] = prevULine[idx-1] * coefC
+		bVector[idx] += -prevULine[idx] * (coefC + coefD)
+		bVector[idx] += prevULine[idx+1] * coefD
+		bVector[idx] += prevULine[idx] * coef / theta
+		bVector[idx] += -tStep * funcLine[idx] / theta
 	}
 	res := helpers.ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
 	return res
@@ -260,7 +268,7 @@ func serialSolve(xBound float64, zBound float64, hStep float64, tStep float64, i
 
 //export solver
 func solver() *C.char {
-	hStep := 0.05
+	hStep := 0.5
 	start := time.Now()
 	res := parallelSolve(10, 10, hStep, 0.01, 2000)
 	elapsed := time.Since(start)
