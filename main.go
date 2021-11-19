@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gonum.org/v1/gonum/mat"
 	"math"
+	"time"
 )
 
 func boundary(x float64, z float64) float64 {
@@ -46,6 +47,10 @@ func solve(xBound float64, zBound float64, hStep float64, tStep float64, iterati
 	nX := int(xBound / hStep)
 	nZ := int(zBound / hStep)
 
+	originU := make([][]float64, nX+1)
+	for idx, _ := range originU {
+		originU[idx] = make([]float64, nZ+1)
+	}
 	prevU := make([][]float64, nX+1)
 	for idx, _ := range prevU {
 		prevU[idx] = make([]float64, nZ+1)
@@ -109,18 +114,23 @@ func solve(xBound float64, zBound float64, hStep float64, tStep float64, iterati
 		var maxErr float64 // calc max error
 		for i, _ := range currentU {
 			for j, _ := range currentU[i] {
-				err := math.Abs(prevU[i][j] - currentU[i][j])
+				err := math.Abs(originU[i][j] - currentU[i][j])
 				if err > maxErr {
 					maxErr = err
 				}
 			}
 		}
 
-		fmt.Println(maxErr)
+		fmt.Printf("\rIteration: %d/%d; U(s+1) - U(s): %0.5f", iteration, iterations, maxErr)
 
 		for i, _ := range currentU { // copy currentU to prevU
 			for j, _ := range currentU[i] {
 				prevU[i][j] = currentU[i][j]
+			}
+		}
+		for i, _ := range currentU { // copy currentU to originU
+			for j, _ := range currentU[i] {
+				originU[i][j] = currentU[i][j]
 			}
 		}
 	}
@@ -129,8 +139,11 @@ func solve(xBound float64, zBound float64, hStep float64, tStep float64, iterati
 
 //export solver
 func solver() *C.char {
-	hStep := 0.5
-	res := solve(10, 10, hStep, 0.01, 1000)
+	hStep := 0.05
+	start := time.Now()
+	res := solve(10, 10, hStep, 0.01, 2000)
+	elapsed := time.Since(start)
+	fmt.Printf("\nSolving took %s", elapsed)
 	n := len(res)
 	m := len(res[0])
 	resMat := mat.NewDense(n, m, nil)
@@ -141,7 +154,6 @@ func solver() *C.char {
 	}
 
 	fa := mat.Formatted(resMat, mat.FormatPython())
-	//helpers.Test()
 	return C.CString(fmt.Sprintf("%#v\n", fa))
 }
 
