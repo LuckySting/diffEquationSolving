@@ -26,6 +26,30 @@ type solvedLineStruct struct {
 	result []float64
 }
 
+func solveLine(prevULine []float64, funcLine []float64, kVal float64, startVal float64, endVal float64, hStep float64, tStep float64) []float64 {
+	n := len(prevULine)
+	topDiag := make([]float64, n)
+	midDiag := make([]float64, n)
+	botDiag := make([]float64, n)
+	bVector := make([]float64, n)
+	midDiag[0] = 1
+	midDiag[len(midDiag)-1] = 1
+	bVector[0] = startVal
+	bVector[len(bVector)-1] = endVal
+	for idx := 1; idx < n-1; idx++ {
+		topDiag[idx] = -1
+		midDiag[idx] = 2 + (hStep*hStep)/tStep/kVal
+		botDiag[idx] = -1
+		bVector[idx] = prevULine[idx-1]
+		bVector[idx] += -prevULine[idx] * 2
+		bVector[idx] += prevULine[idx+1]
+		bVector[idx] += prevULine[idx] * (hStep * hStep) / tStep / kVal
+		bVector[idx] += funcLine[idx] / kVal * (hStep * hStep)
+	}
+	res := helpers.ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
+	return res
+}
+
 func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64, iterations int) [][]float64 {
 	nX := int(xBound / hStep)
 	nZ := int(zBound / hStep)
@@ -44,12 +68,12 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 	}
 	for iteration := 0; iteration < iterations; iteration++ {
 		for i := 0; i < nZ; i++ { //set boundaries
-			currentU[i][0] = -boundary(0, 0)
-			currentU[i][len(currentU[i])-1] = -boundary(0, 0)
+			currentU[i][0] = boundary(0, 0)
+			currentU[i][len(currentU[i])-1] = boundary(0, 0)
 		}
 		for j := 0; j < nX; j++ { //set boundaries
-			currentU[0][j] = -boundary(0, 0)
-			currentU[len(currentU)-1][j] = -boundary(0, 0)
+			currentU[0][j] = boundary(0, 0)
+			currentU[len(currentU)-1][j] = boundary(0, 0)
 		}
 
 		resChan := make(chan solvedLineStruct, nX)
@@ -64,8 +88,8 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 				return mainFunc(float64(j)*hStep, z)
 			})
 			kVal := kFunc(0, 0)
-			startVal := -boundary(0, 0)
-			endVal := -boundary(0, 0)
+			startVal := boundary(0, 0)
+			endVal := boundary(0, 0)
 			go func(index int) {
 				res := solveLine(prevUCol, funcValCol, kVal, startVal, endVal, hStep, tStep)
 				resChan <- solvedLineStruct{
@@ -99,8 +123,8 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 				return mainFunc(x, float64(i)*hStep)
 			})
 			kVal := kFunc(0, 0)
-			startVal := -boundary(0, 0)
-			endVal := -boundary(0, 0)
+			startVal := boundary(0, 0)
+			endVal := boundary(0, 0)
 			go func(index int) {
 				res := solveLine(prevURow, funcValRow, kVal, startVal, endVal, hStep, tStep)
 				resChan <- solvedLineStruct{
@@ -142,133 +166,9 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 	return currentU
 }
 
-func solveLine(prevULine []float64, funcLine []float64, kVal float64, startVal float64, endVal float64, hStep float64, tStep float64) []float64 {
-	n := len(prevULine)
-	topDiag := make([]float64, n)
-	midDiag := make([]float64, n)
-	botDiag := make([]float64, n)
-	bVector := make([]float64, n)
-	theta := tStep / (hStep * hStep)
-	midDiag[0] = 1
-	midDiag[len(midDiag)-1] = 1
-	bVector[0] = startVal
-	bVector[len(bVector)-1] = endVal
-	for idx := 1; idx < n-1; idx++ {
-		coefA := kVal
-		coefB := kVal
-		coefC := kVal
-		coefD := kVal
-		coef := kVal
-		topDiag[idx] = -coefB
-		midDiag[idx] = (coefA + coefB) + coef/theta
-		botDiag[idx] = -coefA
-		bVector[idx] = prevULine[idx-1] * coefC
-		bVector[idx] += -prevULine[idx] * (coefC + coefD)
-		bVector[idx] += prevULine[idx+1] * coefD
-		bVector[idx] += prevULine[idx] * coef / theta
-		bVector[idx] += -tStep * funcLine[idx] / theta
-	}
-	res := helpers.ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
-	return res
-}
-
-func serialSolve(xBound float64, zBound float64, hStep float64, tStep float64, iterations int) [][]float64 {
-	nX := int(xBound / hStep)
-	nZ := int(zBound / hStep)
-
-	originU := make([][]float64, nX+1)
-	for idx, _ := range originU {
-		originU[idx] = make([]float64, nZ+1)
-	}
-	prevU := make([][]float64, nX+1)
-	for idx, _ := range prevU {
-		prevU[idx] = make([]float64, nZ+1)
-	}
-	currentU := make([][]float64, nX+1)
-	for idx, _ := range currentU {
-		currentU[idx] = make([]float64, nZ+1)
-	}
-	for iteration := 0; iteration < iterations; iteration++ {
-		for i := 0; i < nZ; i++ { //set boundaries
-			currentU[i][0] = -boundary(0, 0)
-			currentU[i][len(currentU[i])-1] = -boundary(0, 0)
-		}
-		for j := 0; j < nX; j++ { //set boundaries
-			currentU[0][j] = -boundary(0, 0)
-			currentU[len(currentU)-1][j] = -boundary(0, 0)
-		}
-
-		for j := 1; j < nX; j++ { // by cols
-			prevUCol := make([]float64, nX+1)
-			for i, v := range prevU {
-				prevUCol[i] = v[j]
-			}
-			funcValCol := make([]float64, nZ)
-			helpers.FillSlice(0, nZ, hStep, funcValCol, func(z float64) float64 {
-				return mainFunc(float64(j)*hStep, z)
-			})
-			kVal := kFunc(0, 0)
-			startVal := -boundary(0, 0)
-			endVal := -boundary(0, 0)
-			solvedLine := solveLine(prevUCol, funcValCol, kVal, startVal, endVal, hStep, tStep)
-			for idx, val := range solvedLine {
-				currentU[idx][j] = val
-			}
-		}
-
-		for i, _ := range currentU { // copy currentU to prevU
-			for j, _ := range currentU[i] {
-				prevU[i][j] = currentU[i][j]
-			}
-		}
-
-		for i := 1; i < nZ; i++ { // by rows
-			prevURow := make([]float64, nX+1)
-			for j, v := range prevU[i] {
-				prevURow[j] = v
-			}
-			funcValRow := make([]float64, nX+1)
-			helpers.FillSlice(0, nX+1, hStep, funcValRow, func(x float64) float64 {
-				return mainFunc(x, float64(i)*hStep)
-			})
-			kVal := kFunc(0, 0)
-			startVal := -boundary(0, 0)
-			endVal := -boundary(0, 0)
-			solvedLine := solveLine(prevURow, funcValRow, kVal, startVal, endVal, hStep, tStep)
-			for idx, val := range solvedLine {
-				currentU[i][idx] = val
-			}
-		}
-
-		var maxErr float64 // calc max error
-		for i, _ := range currentU {
-			for j, _ := range currentU[i] {
-				err := math.Abs(originU[i][j] - currentU[i][j])
-				if err > maxErr {
-					maxErr = err
-				}
-			}
-		}
-
-		fmt.Printf("\rIteration: %d/%d; U(s+1) - U(s): %0.5f", iteration, iterations, maxErr)
-
-		for i, _ := range currentU { // copy currentU to prevU
-			for j, _ := range currentU[i] {
-				prevU[i][j] = currentU[i][j]
-			}
-		}
-		for i, _ := range currentU { // copy currentU to originU
-			for j, _ := range currentU[i] {
-				originU[i][j] = currentU[i][j]
-			}
-		}
-	}
-	return currentU
-}
-
 //export solver
 func solver() *C.char {
-	hStep := 0.5
+	hStep := 0.05
 	start := time.Now()
 	res := parallelSolve(10, 10, hStep, 0.01, 2000)
 	elapsed := time.Since(start)
@@ -278,7 +178,7 @@ func solver() *C.char {
 	resMat := mat.NewDense(n, m, nil)
 	for i := 0; i < n; i++ {
 		for j := 0; j < m; j++ {
-			resMat.Set(i, j, -res[i][j])
+			resMat.Set(i, j, res[i][j])
 		}
 	}
 
