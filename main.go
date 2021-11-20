@@ -77,29 +77,50 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 		}
 
 		resChan := make(chan solvedLineStruct, nX)
-
-		for j := 1; j < nX; j++ { // by cols
-			prevU3Cols := make([][3]float64, nX+1)
-			for i := 0; i < len(prevU3Cols); i++ {
-				prevU3Cols[i][0] = prevU[i][j-1]
-				prevU3Cols[i][1] = prevU[i][j]
-				prevU3Cols[i][2] = prevU[i][j+1]
+		goroutinesCount := 8
+		batchSize := nX/goroutinesCount + 1
+		for g := 0; g < goroutinesCount; g++ {
+			startIndex := g * batchSize
+			endIndex := startIndex + batchSize
+			if startIndex == 0 {
+				startIndex = 1
 			}
-			funcValCol := make([]float64, nZ)
-			helpers.FillSlice(0, nZ, hStep, funcValCol, func(z float64) float64 {
-				return mainFunc(float64(j)*hStep, z)
-			})
-			kVal := kFunc(0, 0)
-			startVal := boundary(0, 0)
-			endVal := boundary(0, 0)
-			go func(index int) {
-				res := solveLine(prevU3Cols, funcValCol, kVal, startVal, endVal, hStep, tStep)
-				resChan <- solvedLineStruct{
-					index:  index,
-					result: res,
+			if endIndex > nX {
+				endIndex = nX
+			}
+			if endIndex < startIndex {
+				continue
+			}
+			go func() {
+				buffer := make([]solvedLineStruct, endIndex-startIndex)
+				bufIdx := 0
+				for j := startIndex; j < endIndex; j++ { // by cols
+					prevU3Cols := make([][3]float64, nX+1)
+					for i := 0; i < len(prevU3Cols); i++ {
+						prevU3Cols[i][0] = prevU[i][j-1]
+						prevU3Cols[i][1] = prevU[i][j]
+						prevU3Cols[i][2] = prevU[i][j+1]
+					}
+					funcValCol := make([]float64, nZ)
+					helpers.FillSlice(0, nZ, hStep, funcValCol, func(z float64) float64 {
+						return mainFunc(float64(j)*hStep, z)
+					})
+					kVal := kFunc(0, 0)
+					startVal := boundary(0, 0)
+					endVal := boundary(0, 0)
+					res := solveLine(prevU3Cols, funcValCol, kVal, startVal, endVal, hStep, tStep)
+					buffer[bufIdx] = solvedLineStruct{
+						index:  j,
+						result: res,
+					}
+					bufIdx++
 				}
-			}(j)
+				for _, v := range buffer {
+					resChan <- v
+				}
+			}()
 		}
+
 		for p := 0; p < nX-1; p++ {
 			solved := <-resChan
 			for idx, val := range solved.result {
@@ -114,29 +135,49 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 		}
 
 		resChan = make(chan solvedLineStruct, nZ)
-
-		for i := 1; i < nZ; i++ { // by rows
-			prevU3Rows := make([][3]float64, nX+1)
-			for j := 0; j < len(prevU3Rows); j++ {
-				prevU3Rows[j][0] = prevU[i-1][j]
-				prevU3Rows[j][1] = prevU[i][j]
-				prevU3Rows[j][2] = prevU[i+1][j]
+		batchSize = nZ/goroutinesCount + 1
+		for g := 0; g < goroutinesCount; g++ {
+			startIndex := g * batchSize
+			endIndex := startIndex + batchSize
+			if startIndex == 0 {
+				startIndex = 1
 			}
-			funcValRow := make([]float64, nX+1)
-			helpers.FillSlice(0, nX+1, hStep, funcValRow, func(x float64) float64 {
-				return mainFunc(x, float64(i)*hStep)
-			})
-			kVal := kFunc(0, 0)
-			startVal := boundary(0, 0)
-			endVal := boundary(0, 0)
-			go func(index int) {
-				res := solveLine(prevU3Rows, funcValRow, kVal, startVal, endVal, hStep, tStep)
-				resChan <- solvedLineStruct{
-					index:  index,
-					result: res,
+			if endIndex > nZ {
+				endIndex = nZ
+			}
+			if endIndex < startIndex {
+				continue
+			}
+			go func() {
+				buffer := make([]solvedLineStruct, endIndex-startIndex)
+				bufIdx := 0
+				for i := startIndex; i < endIndex; i++ { // by rows
+					prevU3Rows := make([][3]float64, nX+1)
+					for j := 0; j < len(prevU3Rows); j++ {
+						prevU3Rows[j][0] = prevU[i-1][j]
+						prevU3Rows[j][1] = prevU[i][j]
+						prevU3Rows[j][2] = prevU[i+1][j]
+					}
+					funcValRow := make([]float64, nX+1)
+					helpers.FillSlice(0, nX+1, hStep, funcValRow, func(x float64) float64 {
+						return mainFunc(x, float64(i)*hStep)
+					})
+					kVal := kFunc(0, 0)
+					startVal := boundary(0, 0)
+					endVal := boundary(0, 0)
+					res := solveLine(prevU3Rows, funcValRow, kVal, startVal, endVal, hStep, tStep)
+					buffer[bufIdx] = solvedLineStruct{
+						index:  i,
+						result: res,
+					}
+					bufIdx++
 				}
-			}(i)
+				for _, v := range buffer {
+					resChan <- v
+				}
+			}()
 		}
+
 		for p := 0; p < nZ-1; p++ {
 			solved := <-resChan
 			for idx, val := range solved.result {
@@ -172,9 +213,9 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 
 //export solver
 func solver() *C.char {
-	hStep := 0.25
+	hStep := 0.01
 	start := time.Now()
-	res := parallelSolve(10, 10, hStep, 0.01, 8000)
+	res := parallelSolve(10, 10, hStep, 0.2, 300)
 	elapsed := time.Since(start)
 	fmt.Printf("\nSolving took %s", elapsed)
 	n := len(res)
