@@ -67,11 +67,11 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 		currentU[idx] = make([]float64, nZ+1)
 	}
 	for iteration := 0; iteration < iterations; iteration++ {
-		for i := 0; i < nZ; i++ { //set boundaries
+		for i := 0; i < nZ+1; i++ { //set boundaries
 			currentU[i][0] = boundary(0, 0)
 			currentU[i][len(currentU[i])-1] = boundary(0, 0)
 		}
-		for j := 0; j < nX; j++ { //set boundaries
+		for j := 0; j < nX+1; j++ { //set boundaries
 			currentU[0][j] = boundary(0, 0)
 			currentU[len(currentU)-1][j] = boundary(0, 0)
 		}
@@ -168,7 +168,7 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 
 //export solver
 func solver() *C.char {
-	hStep := 0.05
+	hStep := 0.1
 	start := time.Now()
 	res := parallelSolve(10, 10, hStep, 0.01, 2000)
 	elapsed := time.Since(start)
