@@ -26,8 +26,8 @@ type solvedLineStruct struct {
 	result []float64
 }
 
-func solveLine(prevULine []float64, funcLine []float64, kVal float64, startVal float64, endVal float64, hStep float64, tStep float64) []float64 {
-	n := len(prevULine)
+func solveLine(prevU3Lines [][3]float64, funcLine []float64, kVal float64, startVal float64, endVal float64, hStep float64, tStep float64) []float64 {
+	n := len(prevU3Lines)
 	topDiag := make([]float64, n)
 	midDiag := make([]float64, n)
 	botDiag := make([]float64, n)
@@ -40,10 +40,10 @@ func solveLine(prevULine []float64, funcLine []float64, kVal float64, startVal f
 		topDiag[idx] = -1
 		midDiag[idx] = 2 + (hStep*hStep)/tStep/kVal
 		botDiag[idx] = -1
-		bVector[idx] = prevULine[idx-1]
-		bVector[idx] += -prevULine[idx] * 2
-		bVector[idx] += prevULine[idx+1]
-		bVector[idx] += prevULine[idx] * (hStep * hStep) / tStep / kVal
+		bVector[idx] = prevU3Lines[idx][0]
+		bVector[idx] += -prevU3Lines[idx][1] * 2
+		bVector[idx] += prevU3Lines[idx][2]
+		bVector[idx] += prevU3Lines[idx][1] * (hStep * hStep) / tStep / kVal
 		bVector[idx] += funcLine[idx] / kVal * (hStep * hStep)
 	}
 	res := helpers.ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
@@ -79,9 +79,11 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 		resChan := make(chan solvedLineStruct, nX)
 
 		for j := 1; j < nX; j++ { // by cols
-			prevUCol := make([]float64, nX+1)
-			for i, v := range prevU {
-				prevUCol[i] = v[j]
+			prevU3Cols := make([][3]float64, nX+1)
+			for i := 0; i < len(prevU3Cols); i++ {
+				prevU3Cols[i][0] = prevU[i][j-1]
+				prevU3Cols[i][1] = prevU[i][j]
+				prevU3Cols[i][2] = prevU[i][j+1]
 			}
 			funcValCol := make([]float64, nZ)
 			helpers.FillSlice(0, nZ, hStep, funcValCol, func(z float64) float64 {
@@ -91,7 +93,7 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 			startVal := boundary(0, 0)
 			endVal := boundary(0, 0)
 			go func(index int) {
-				res := solveLine(prevUCol, funcValCol, kVal, startVal, endVal, hStep, tStep)
+				res := solveLine(prevU3Cols, funcValCol, kVal, startVal, endVal, hStep, tStep)
 				resChan <- solvedLineStruct{
 					index:  index,
 					result: res,
@@ -114,9 +116,11 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 		resChan = make(chan solvedLineStruct, nZ)
 
 		for i := 1; i < nZ; i++ { // by rows
-			prevURow := make([]float64, nX+1)
-			for j, v := range prevU[i] {
-				prevURow[j] = v
+			prevU3Rows := make([][3]float64, nX+1)
+			for j := 0; j < len(prevU3Rows); j++ {
+				prevU3Rows[j][0] = prevU[i-1][j]
+				prevU3Rows[j][1] = prevU[i][j]
+				prevU3Rows[j][2] = prevU[i+1][j]
 			}
 			funcValRow := make([]float64, nX+1)
 			helpers.FillSlice(0, nX+1, hStep, funcValRow, func(x float64) float64 {
@@ -126,7 +130,7 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 			startVal := boundary(0, 0)
 			endVal := boundary(0, 0)
 			go func(index int) {
-				res := solveLine(prevURow, funcValRow, kVal, startVal, endVal, hStep, tStep)
+				res := solveLine(prevU3Rows, funcValRow, kVal, startVal, endVal, hStep, tStep)
 				resChan <- solvedLineStruct{
 					index:  index,
 					result: res,
@@ -168,9 +172,9 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 
 //export solver
 func solver() *C.char {
-	hStep := 0.1
+	hStep := 0.25
 	start := time.Now()
-	res := parallelSolve(10, 10, hStep, 0.01, 2000)
+	res := parallelSolve(10, 10, hStep, 0.01, 8000)
 	elapsed := time.Since(start)
 	fmt.Printf("\nSolving took %s", elapsed)
 	n := len(res)
