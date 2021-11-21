@@ -211,6 +211,11 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 	return currentU
 }
 
+//export rawSolver
+func rawSolver(xBound float64, zBound float64, hStep float64, tStep float64, iterations int, processes int) [][]float64 {
+	return parallelSolve(xBound, zBound, hStep, tStep, iterations, processes)
+}
+
 //export solver
 func solver(xBound float64, zBound float64, hStep float64, tStep float64, iterations int, processes int) *C.char {
 	start := time.Now()
