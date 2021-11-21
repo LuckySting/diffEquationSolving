@@ -50,7 +50,7 @@ func solveLine(prevU3Lines [][3]float64, funcLine []float64, kVal float64, start
 	return res
 }
 
-func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64, iterations int) [][]float64 {
+func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64, iterations int, processes int) [][]float64 {
 	nX := int(xBound / hStep)
 	nZ := int(zBound / hStep)
 
@@ -77,7 +77,7 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 		}
 
 		resChan := make(chan solvedLineStruct, nX)
-		goroutinesCount := 8
+		goroutinesCount := processes
 		batchSize := nX/goroutinesCount + 1
 		for g := 0; g < goroutinesCount; g++ {
 			startIndex := g * batchSize
@@ -212,10 +212,9 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 }
 
 //export solver
-func solver() *C.char {
-	hStep := 0.01
+func solver(xBound float64, zBound float64, hStep float64, tStep float64, iterations int, processes int) *C.char {
 	start := time.Now()
-	res := parallelSolve(10, 10, hStep, 0.2, 300)
+	res := parallelSolve(xBound, zBound, hStep, tStep, iterations, processes)
 	elapsed := time.Since(start)
 	fmt.Printf("\nSolving took %s", elapsed)
 	n := len(res)
@@ -232,5 +231,5 @@ func solver() *C.char {
 }
 
 func main() {
-	solver()
+	solver(10, 10, 0.01, 0.01, 300, 8)
 }
