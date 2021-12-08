@@ -38,12 +38,12 @@ func solveLine(prevU3Lines [][3]float64, funcLine []float64, kVal float64, start
 	bVector[len(bVector)-1] = endVal
 	for idx := 1; idx < n-1; idx++ {
 		topDiag[idx] = -1
-		midDiag[idx] = 2 + (hStep*hStep)/tStep/kVal
+		midDiag[idx] = 2 + (hStep*hStep)/(tStep/2)/kVal
 		botDiag[idx] = -1
 		bVector[idx] = prevU3Lines[idx][0]
 		bVector[idx] += -prevU3Lines[idx][1] * 2
 		bVector[idx] += prevU3Lines[idx][2]
-		bVector[idx] += prevU3Lines[idx][1] * (hStep * hStep) / tStep / kVal
+		bVector[idx] += prevU3Lines[idx][1] * (hStep * hStep) / (tStep / 2) / kVal
 		bVector[idx] += funcLine[idx] / kVal * (hStep * hStep)
 	}
 	res := helpers.ThomasAlgorithm(botDiag, midDiag, topDiag, bVector)
@@ -195,7 +195,7 @@ func parallelSolve(xBound float64, zBound float64, hStep float64, tStep float64,
 			}
 		}
 
-		fmt.Printf("\rIteration: %d/%d; U(s+1) - U(s): %0.5f", iteration, iterations, maxErr)
+		fmt.Printf("\rIteration: %d/%d; U(s+1) - U(s): %0.5f", iteration+1, iterations, maxErr)
 
 		for i, _ := range currentU { // copy currentU to prevU
 			for j, _ := range currentU[i] {
@@ -236,5 +236,5 @@ func solver(xBound float64, zBound float64, hStep float64, tStep float64, iterat
 }
 
 func main() {
-	solver(10, 10, 0.01, 0.01, 300, 8)
+	solver(10, 10, 0.01, 0.01, 300, 10)
 }
